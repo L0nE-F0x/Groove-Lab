@@ -1,0 +1,18 @@
+# Netlify build settings for GrooveLab (Vite static SPA).
+# With this file, Netlify auto-detects everything on connect — no dashboard
+# config needed.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  # Vite 7 requires Node 20.19+ / 22.12+ — pin a known-good major.
+  NODE_VERSION = "22"
+
+# Single-page app: serve index.html for any unmatched path (future-proofs
+# client-side routing). Real asset requests are served before this falls back.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
