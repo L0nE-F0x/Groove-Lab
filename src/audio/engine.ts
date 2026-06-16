@@ -12,9 +12,17 @@
  *    with what you actually hear.
  */
 import * as Tone from 'tone';
-import { createDrumVoice, MelodicInstrument, type DrumVoice } from './instruments';
-import type { Project, Track } from './types';
+import {
+  createDrumVoice,
+  createSampleVoice,
+  MelodicInstrument,
+  SamplerInstrument,
+  type DrumVoice,
+  type Instrument,
+} from './instruments';
+import { DEFAULT_INSTRUMENT_PARAMS, DEFAULT_SAMPLE_ROOT, type Project, type Track } from './types';
 import { midiToNoteName } from '../utils/midi';
+import { ensureMany, getBuffer } from './sampleLibrary';
 import { meterToLevel } from './utils';
 import { clamp } from '../utils/helpers';
 
@@ -28,7 +36,7 @@ interface MelodicNodes {
   kind: 'melodic';
   channel: Tone.Channel;
   meter: Tone.Meter;
-  instrument: MelodicInstrument;
+  instrument: Instrument; // MelodicInstrument (synth) or SamplerInstrument
 }
 type TrackNodes = DrumNodes | MelodicNodes;
 
@@ -60,7 +68,7 @@ export class AudioEngine {
    */
   async init(project: Project): Promise<void> {
     if (this.started) {
-      this.loadProject(project);
+      await this.loadProject(project);
       return;
     }
     await Tone.start();
@@ -91,15 +99,16 @@ export class AudioEngine {
     }, '16n');
 
     this.started = true;
-    this.loadProject(project);
+    await this.loadProject(project);
   }
 
   // --- Project graph ------------------------------------------------------
 
   /** Replace the active project and rebuild all per-track audio nodes. */
-  loadProject(project: Project): void {
+  async loadProject(project: Project): Promise<void> {
     this.project = project;
     if (!this.started) return;
+    await ensureMany(sampleIdsOf(project)); // decode any imported/recorded sounds first
     this.disposeTrackNodes();
     for (const track of project.tracks) this.buildTrack(track);
     Tone.getTransport().bpm.value = project.bpm;
@@ -121,26 +130,40 @@ export class AudioEngine {
     if (track.type === 'drums') {
       const voices = new Map<string, DrumVoice>();
       for (const lane of track.lanes ?? []) {
-        const voice = createDrumVoice(lane.soundType);
+        const buffer = lane.sampleId ? getBuffer(lane.sampleId) : undefined;
+        const voice = buffer ? createSampleVoice(buffer) : createDrumVoice(lane.soundType);
         voice.connect(channel);
         voices.set(lane.id, voice);
       }
       this.nodes.set(track.id, { kind: 'drums', channel, meter, voices });
     } else {
-      const instrument = new MelodicInstrument(
-        track.instrumentParams ?? {
-          oscillatorType: 'sawtooth', filterCutoff: 2400, filterQ: 2,
-          attack: 0.01, decay: 0.22, sustain: 0.5, release: 0.4,
-        },
-      );
+      const params = track.instrumentParams ?? DEFAULT_INSTRUMENT_PARAMS;
+      const buffer = track.sampleId ? getBuffer(track.sampleId) : undefined;
+      const instrument: Instrument = buffer
+        ? new SamplerInstrument(buffer, params, track.sampleRoot ?? DEFAULT_SAMPLE_ROOT)
+        : new MelodicInstrument(params);
       instrument.connect(channel);
       this.nodes.set(track.id, { kind: 'melodic', channel, meter, instrument });
     }
   }
 
   /** Add a single track's nodes at runtime (no full rebuild). */
-  addTrack(track: Track): void {
+  async addTrack(track: Track): Promise<void> {
     if (!this.started || this.nodes.has(track.id)) return;
+    await ensureMany(sampleIdsOf({ tracks: [track] } as Project));
+    this.buildTrack(track);
+    this.refreshSolo();
+  }
+
+  /** Dispose + rebuild one track (e.g. sample swapped or root note changed). */
+  async rebuildTrack(track: Track): Promise<void> {
+    if (!this.started) return;
+    const existing = this.nodes.get(track.id);
+    if (existing) {
+      this.teardown(existing);
+      this.nodes.delete(track.id);
+    }
+    await ensureMany(sampleIdsOf({ tracks: [track] } as Project));
     this.buildTrack(track);
     this.refreshSolo();
   }
@@ -318,6 +341,16 @@ export class AudioEngine {
   private toDb(linear: number): number {
     return linear <= 0.0001 ? -Infinity : Tone.gainToDb(clamp(linear, 0, 1));
   }
+}
+
+/** Collect every sample id referenced by a project (track samplers + lanes). */
+function sampleIdsOf(project: Project): string[] {
+  const ids: string[] = [];
+  for (const track of project.tracks) {
+    if (track.sampleId) ids.push(track.sampleId);
+    track.lanes?.forEach((lane) => lane.sampleId && ids.push(lane.sampleId));
+  }
+  return ids;
 }
 
 /** Single shared engine instance for the whole app. */

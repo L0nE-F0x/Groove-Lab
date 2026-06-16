@@ -9,10 +9,23 @@
 /** Oscillator shapes the melodic synth supports (mirrors Tone.js basic types). */
 export type OscType = 'sine' | 'square' | 'sawtooth' | 'triangle';
 
-/** Synthesized drum voices available in the kit. */
-export type DrumSoundType = 'kick' | 'snare' | 'clap' | 'closedHat' | 'openHat' | 'perc';
+/** Synthesized drum voices available in the kit (plus 'sample' one-shots). */
+export type DrumSoundType = 'kick' | 'snare' | 'clap' | 'closedHat' | 'openHat' | 'perc' | 'sample';
 
 export type TrackType = 'drums' | 'melodic';
+
+/**
+ * An imported or recorded audio sample. The raw bytes live in IndexedDB (keyed
+ * by `id`); only this lightweight metadata is kept in the Project JSON. On
+ * export the bytes are re-embedded so a shared `.json` is self-contained.
+ */
+export interface Sample {
+  id: string;
+  name: string;
+  source: 'imported' | 'recorded';
+  duration: number; // seconds
+  createdAt: string;
+}
 
 /** A single melodic note placed on the piano roll. */
 export interface Note {
@@ -30,6 +43,8 @@ export interface DrumLane {
   soundType: DrumSoundType;
   steps: boolean[]; // length === Project.patternLength
   volume: number; // 0 – 1, per-lane level
+  /** When set (soundType 'sample'), the lane plays this one-shot instead of a synth. */
+  sampleId?: string;
 }
 
 /** Live-tweakable parameters for the melodic synth (Sound Design panel). */
@@ -55,6 +70,10 @@ export interface Track {
   lanes?: DrumLane[]; // drums only
   notes?: Note[]; // melodic only
   instrumentParams?: InstrumentParams; // melodic only
+  /** When set, this melodic track is a Sampler playing this sample (pitched). */
+  sampleId?: string;
+  /** MIDI note at which the sample plays back at original pitch (default 60 = C4). */
+  sampleRoot?: number;
 }
 
 export interface Project {
@@ -65,6 +84,7 @@ export interface Project {
   swing: number; // 0 – 1 (delays off-beat 16ths). Default 0.
   masterVolume: number; // 0 – 1
   tracks: Track[];
+  samples: Sample[]; // imported / recorded sample library
   createdAt: string; // ISO
   updatedAt: string; // ISO
 }
@@ -90,6 +110,9 @@ export const PITCH_MAX = 83;
 
 export const FILTER_MIN = 80;
 export const FILTER_MAX = 16000;
+
+/** MIDI note a sample plays at its original pitch by default (C4). */
+export const DEFAULT_SAMPLE_ROOT = 60;
 
 export const DEFAULT_INSTRUMENT_PARAMS: InstrumentParams = {
   oscillatorType: 'sawtooth',

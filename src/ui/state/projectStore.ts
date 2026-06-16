@@ -10,6 +10,7 @@ import {
   BPM_MAX,
   BPM_MIN,
   DEFAULT_INSTRUMENT_PARAMS,
+  DEFAULT_SAMPLE_ROOT,
   PITCH_MAX,
   PITCH_MIN,
   TRACK_COLORS,
@@ -18,10 +19,12 @@ import {
   type Note,
   type Project,
   type ProjectSummary,
+  type Sample,
   type Track,
 } from '../../audio/types';
 import { Emitter } from '../../utils/events';
 import { clamp, debounce, uid } from '../../utils/helpers';
+import { putSampleDataUrl, removeSample } from '../../audio/sampleLibrary';
 import { buildDemoProject, buildStarterProject } from './demoProjects';
 
 const STORAGE_PREFIX = 'groovelab:project:';
@@ -39,6 +42,9 @@ type StoreEvents = {
   'track:added': { track: Track };
   'track:removed': { trackId: string };
   'track:renamed': { trackId: string };
+  'track:rebuilt': { trackId: string }; // sampler instrument must be rebuilt (sample/root)
+  lanes: { trackId: string }; // a drum lane was added/removed (grid + engine rebuild)
+  samples: Project; // sample library changed
   meta: Project; // project name or saved-project list changed
 };
 
@@ -258,7 +264,93 @@ class ProjectStore extends Emitter<StoreEvents> {
     if (idx === -1 || this.project.tracks.length <= 1) return;
     this.project.tracks.splice(idx, 1);
     this.emit('track:removed', { trackId });
+    this.pruneSamples();
     this.touch();
+  }
+
+  // --- Samples (imported / recorded) -------------------------------------
+
+  get drumsTrack(): Track | undefined {
+    return this.project.tracks.find((t) => t.type === 'drums');
+  }
+
+  /** Register sample metadata (the bytes are already in IndexedDB). */
+  addSample(sample: Sample): void {
+    this.project.samples.push(sample);
+    this.emit('samples', this.project);
+    this.touch();
+  }
+
+  /** Create a playable, pitched sampler track from a sample. */
+  addSamplerTrack(sampleId: string, name: string): Track {
+    const index = this.project.tracks.filter((t) => t.type === 'melodic').length;
+    const track: Track = {
+      id: uid('trk'),
+      name,
+      type: 'melodic',
+      color: TRACK_COLORS[(index + 1) % TRACK_COLORS.length],
+      volume: 0.8,
+      pan: 0,
+      muted: false,
+      solo: false,
+      instrumentParams: { ...DEFAULT_INSTRUMENT_PARAMS, attack: 0.004, release: 0.6, filterCutoff: 12000 },
+      notes: [],
+      sampleId,
+      sampleRoot: DEFAULT_SAMPLE_ROOT,
+    };
+    this.project.tracks.push(track);
+    this.emit('track:added', { track });
+    this.touch();
+    return track;
+  }
+
+  /** Add a sample as a one-shot lane in a drums track. */
+  addSampleLane(drumTrackId: string, sampleId: string, name: string): void {
+    const track = this.getTrack(drumTrackId);
+    if (track?.type !== 'drums') return;
+    track.lanes ??= [];
+    track.lanes.push({
+      id: uid('lane'),
+      name,
+      soundType: 'sample',
+      sampleId,
+      steps: new Array(this.project.patternLength).fill(false),
+      volume: 0.85,
+    });
+    this.emit('lanes', { trackId: drumTrackId });
+    this.touch();
+  }
+
+  removeLane(trackId: string, laneId: string): void {
+    const track = this.getTrack(trackId);
+    if (!track?.lanes || track.lanes.length <= 1) return;
+    track.lanes = track.lanes.filter((l) => l.id !== laneId);
+    this.emit('lanes', { trackId });
+    this.pruneSamples();
+    this.touch();
+  }
+
+  /** Set the MIDI note at which a sampler plays the sample un-pitched. */
+  setSampleRoot(trackId: string, root: number): void {
+    const track = this.getTrack(trackId);
+    if (!track) return;
+    track.sampleRoot = clamp(Math.round(root), PITCH_MIN, PITCH_MAX);
+    this.emit('track:rebuilt', { trackId });
+    this.touch();
+  }
+
+  /** Drop samples no longer referenced by any track/lane (frees IndexedDB). */
+  private pruneSamples(): void {
+    const used = new Set<string>();
+    for (const t of this.project.tracks) {
+      if (t.sampleId) used.add(t.sampleId);
+      t.lanes?.forEach((l) => l.sampleId && used.add(l.sampleId));
+    }
+    const orphans = this.project.samples.filter((s) => !used.has(s.id));
+    if (!orphans.length) return;
+    this.project.samples = this.project.samples.filter((s) => used.has(s.id));
+    orphans.forEach((s) => void removeSample(s.id));
+    this.emit('samples', this.project);
   }
 
   renameTrack(trackId: string, name: string): void {
@@ -302,9 +394,17 @@ class ProjectStore extends Emitter<StoreEvents> {
     }
   }
 
-  /** Import a project object (e.g. from a dropped/loaded .json file). */
-  importProject(project: Project): void {
-    const copy = normalizeProject(project);
+  /**
+   * Import a project (e.g. from a loaded `.json`). Exported files embed their
+   * samples as data URLs under `sampleData`; restore those into IndexedDB
+   * (keeping ids so references stay valid) before adopting the project.
+   */
+  async importProject(data: Project & { sampleData?: Record<string, string> }): Promise<void> {
+    const { sampleData, ...project } = data;
+    if (sampleData) {
+      await Promise.all(Object.entries(sampleData).map(([id, url]) => putSampleDataUrl(id, url)));
+    }
+    const copy = normalizeProject(project as Project);
     copy.id = uid('proj'); // never overwrite an existing project on import
     this.adopt(copy);
   }
@@ -397,6 +497,7 @@ function normalizeProject(p: Project): Project {
   p.patternLength ||= 16;
   p.createdAt ??= new Date().toISOString();
   p.updatedAt ??= p.createdAt;
+  p.samples ??= [];
   p.tracks ??= [];
   p.tracks.forEach((t, i) => {
     t.id ??= uid('trk');

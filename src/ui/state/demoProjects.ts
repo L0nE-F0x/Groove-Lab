@@ -96,6 +96,7 @@ function assemble(name: string, t: Pick<Template, 'bpm' | 'swing' | 'drums' | 's
     swing: t.swing,
     masterVolume: 0.85,
     tracks: [makeDrumTrack(t.drums), makeMelodicTrack(t.synthName, t.synth, t.notes)],
+    samples: [],
     createdAt: now,
     updatedAt: now,
   };

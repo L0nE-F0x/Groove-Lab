@@ -9,9 +9,9 @@ import { BPM_MAX, BPM_MIN } from '../../audio/types';
 import { engine } from '../../audio/engine';
 import { projectStore } from '../state/projectStore';
 import { Toggle } from '../components/Toggle';
-import { downloadProject } from '../../utils/export';
 import { onFrame, onPlayState, togglePlay, toast } from '../controller';
 import { openLibrary } from './ProjectMenu';
+import { openExport } from './ExportModal';
 
 export class TransportBar {
   readonly el: HTMLElement;
@@ -105,10 +105,7 @@ export class TransportBar {
         toast('Started a new groove');
       }),
       this.actionBtn('folder', 'Project library', () => openLibrary()),
-      this.actionBtn('download', 'Export as JSON', () => {
-        downloadProject(projectStore.current);
-        toast('Exported project JSON');
-      }),
+      this.actionBtn('download', 'Export audio (WAV / MP3)', () => openExport()),
     ]);
 
     return el('header', { class: 'topbar' }, [

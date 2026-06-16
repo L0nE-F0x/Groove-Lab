@@ -10,11 +10,14 @@ import { icon } from '../icons';
 import {
   FILTER_MAX,
   FILTER_MIN,
+  PITCH_MAX,
+  PITCH_MIN,
   type InstrumentParams,
   type Note,
   type OscType,
   type Track,
 } from '../../audio/types';
+import { toast } from '../controller';
 import { midiToNoteName } from '../../utils/midi';
 import { projectStore } from '../state/projectStore';
 import { uiStore } from '../state/uiStore';
@@ -60,7 +63,9 @@ export class SoundDesignPanel {
     }
     if (track.type === 'melodic') {
       const note = uiStore.selectedNoteId ? track.notes?.find((n) => n.id === uiStore.selectedNoteId) : null;
-      this.body.append(note ? this.noteInspector(track, note) : this.soundDesign(track));
+      if (note) this.body.append(this.noteInspector(track, note));
+      else if (track.sampleId) this.body.append(this.samplerDesign(track));
+      else this.body.append(this.soundDesign(track));
     } else {
       this.body.append(this.drumPanel(track));
     }
@@ -123,6 +128,55 @@ export class SoundDesignPanel {
       this.group('Filter', [el('div', { class: 'knob-row' }, [cutoff.el, reso.el])]),
       this.group('Envelope', [el('div', { class: 'knob-row' }, [attack.el, decay.el, sustain.el, release.el])]),
       el('p', { class: 'inspector-tip' }, ['Tip: click the grid to add notes, then drag them around to find a melody.']),
+    ]);
+  }
+
+  // --- Sampler (imported / recorded sound, played melodically) ------------
+
+  private samplerDesign(track: Track): HTMLElement {
+    const p = track.instrumentParams!;
+    const sample = projectStore.current.samples.find((s) => s.id === track.sampleId);
+    const set = (patch: Partial<InstrumentParams>) => projectStore.setInstrumentParams(track.id, patch);
+    const secs = (v: number) => (v < 1 ? `${Math.round(v * 1000)}ms` : `${v.toFixed(1)}s`);
+
+    const root = new Knob({
+      label: 'Root', min: PITCH_MIN, max: PITCH_MAX, value: track.sampleRoot ?? 60, step: 1, size: 52,
+      format: (v) => midiToNoteName(Math.round(v)),
+      onChange: (v) => projectStore.setSampleRoot(track.id, v), // commit-only: rebuilds the sampler
+    });
+    const cutoff = new Knob({
+      label: 'Cutoff', min: FILTER_MIN, max: FILTER_MAX, value: p.filterCutoff, curve: 'exp', size: 52,
+      format: (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${Math.round(v)}`),
+      onInput: (v) => set({ filterCutoff: v }),
+    });
+    const reso = new Knob({ label: 'Reso', min: 0, max: 18, value: p.filterQ, size: 52, format: (v) => v.toFixed(1), onInput: (v) => set({ filterQ: v }) });
+    const attack = new Knob({ label: 'Attack', min: 0.001, max: 1, value: p.attack, curve: 'exp', size: 48, format: secs, onInput: (v) => set({ attack: v }) });
+    const release = new Knob({ label: 'Release', min: 0.05, max: 3, value: p.release, curve: 'exp', size: 48, format: secs, onInput: (v) => set({ release: v }) });
+
+    return el('div', { class: 'sd' }, [
+      this.header('waveform', 'Sampler', track.name),
+      el('div', { class: 'sample-card' }, [
+        el('span', { class: 'sample-ico', html: icon('waveform', 18) }),
+        el('div', {}, [
+          el('div', { class: 'sample-name' }, [sample?.name ?? 'Sample']),
+          el('div', { class: 'sample-meta' }, [sample ? `${sample.source} · ${sample.duration.toFixed(2)}s` : '']),
+        ]),
+      ]),
+      this.group('Pitch', [el('div', { class: 'knob-row' }, [root.el])]),
+      this.group('Filter', [el('div', { class: 'knob-row' }, [cutoff.el, reso.el])]),
+      this.group('Envelope', [el('div', { class: 'knob-row' }, [attack.el, release.el])]),
+      el('button', {
+        class: 'btn btn-ghost btn-block', type: 'button',
+        html: `${icon('grid', 15)}<span>Also add to beat grid</span>`,
+        onClick: () => {
+          const drums = projectStore.drumsTrack;
+          if (drums && track.sampleId) {
+            projectStore.addSampleLane(drums.id, track.sampleId, sample?.name ?? track.name);
+            toast('Added to the beat grid');
+          }
+        },
+      }),
+      el('p', { class: 'inspector-tip' }, ['Play it on the grid like any synth. “Root” sets which key plays the sound un-pitched.']),
     ]);
   }
 

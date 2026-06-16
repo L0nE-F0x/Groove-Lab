@@ -7,6 +7,8 @@ import { icon } from '../icons';
 import type { Track } from '../../audio/types';
 import { projectStore } from '../state/projectStore';
 import { uiStore } from '../state/uiStore';
+import { importSampleFromFile } from '../sampleActions';
+import { openRecorder } from './RecorderModal';
 
 export class Sidebar {
   readonly el: HTMLElement;
@@ -20,15 +22,40 @@ export class Sidebar {
 
   private build(): HTMLElement {
     this.list = el('div', { class: 'track-list' });
+
+    const fileInput = el('input', {
+      type: 'file', accept: 'audio/*', style: { display: 'none' },
+      onChange: () => {
+        const file = fileInput.files?.[0];
+        if (file) void importSampleFromFile(file);
+        fileInput.value = '';
+      },
+    }) as HTMLInputElement;
+
     const addBtn = el(
       'button',
       { class: 'add-track', type: 'button', title: 'Add a synth track', onClick: () => this.addSynth() },
       [el('span', { html: icon('plus', 16) }), 'Add synth'],
     );
+    const importBtn = el(
+      'button',
+      { class: 'add-track sub', type: 'button', title: 'Import an audio file', onClick: () => fileInput.click() },
+      [el('span', { html: icon('upload', 15) }), 'Import'],
+    );
+    const recordBtn = el(
+      'button',
+      { class: 'add-track sub', type: 'button', title: 'Record from your mic', onClick: () => openRecorder() },
+      [el('span', { html: icon('mic', 15) }), 'Record'],
+    );
+
     return el('aside', { class: 'sidebar' }, [
       el('div', { class: 'sidebar-head' }, [el('span', { class: 'panel-title' }, ['Tracks'])]),
       this.list,
-      addBtn,
+      el('div', { class: 'sidebar-actions' }, [
+        addBtn,
+        el('div', { class: 'sidebar-actions-row' }, [importBtn, recordBtn]),
+      ]),
+      fileInput,
     ]);
   }
 

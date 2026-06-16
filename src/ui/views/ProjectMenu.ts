@@ -72,7 +72,7 @@ export function openLibrary(): void {
       const file = fileInput.files?.[0];
       if (!file) return;
       try {
-        projectStore.importProject(await readProjectFile(file));
+        await projectStore.importProject(await readProjectFile(file));
         toast('Project imported');
         renderList();
       } catch (err) {
@@ -92,9 +92,9 @@ export function openLibrary(): void {
         onClick: () => { const c = projectStore.duplicateProject(); renderList(); toast(`Duplicated as “${c.name}”`); },
       }),
       el('button', {
-        class: 'btn btn-ghost btn-sm', type: 'button', title: 'Export JSON',
+        class: 'btn btn-ghost btn-sm', type: 'button', title: 'Export project JSON',
         html: `${icon('download', 14)}<span>Export</span>`,
-        onClick: () => { downloadProject(projectStore.current); toast('Exported project JSON'); },
+        onClick: async () => { await downloadProject(projectStore.current); toast('Exported project JSON'); },
       }),
     ]),
   ]);

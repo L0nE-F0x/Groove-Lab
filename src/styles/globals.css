@@ -1498,3 +1498,210 @@ input[type='range']::-moz-range-thumb {
     display: none;
   }
 }
+
+/* ===========================================================================
+   Samples: sidebar actions, sampler card, choosers, recorder, export
+   ======================================================================== */
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.sidebar-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.add-track.sub {
+  padding: 9px;
+  font-size: 12.5px;
+  border-style: solid;
+  background: var(--panel-2);
+}
+.add-track.sub:hover {
+  color: var(--cyan);
+}
+
+.lane-btn.danger:hover {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+}
+
+/* Sampler inspector card */
+.sample-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+.sample-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(163, 230, 53, 0.14);
+  color: #a3e635;
+  flex: 0 0 auto;
+}
+.sample-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.sample-meta {
+  font-size: 11px;
+  color: var(--faint);
+  text-transform: capitalize;
+}
+
+/* "Use this sound as…" chooser */
+.modal-sm {
+  max-width: 384px;
+}
+.modal-hint {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.use-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.use-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 15px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  text-align: left;
+  transition: all 0.15s var(--ease);
+}
+.use-choice:hover {
+  border-color: color-mix(in srgb, var(--cyan) 50%, transparent);
+  background: var(--panel-3);
+  transform: translateY(-2px);
+}
+.use-emoji {
+  font-size: 24px;
+}
+.use-title {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.use-sub {
+  font-size: 11px;
+  color: var(--faint);
+}
+
+/* Recorder modal */
+.rec-stage {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.rec-button {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: none;
+  color: #fff;
+  background: linear-gradient(135deg, var(--red), #ff7a90);
+  box-shadow: 0 6px 18px rgba(255, 77, 106, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.14s var(--ease);
+}
+.rec-button:hover {
+  transform: scale(1.06);
+}
+.rec-button.is-recording {
+  animation: recpulse 1.2s ease-in-out infinite;
+}
+@keyframes recpulse {
+  0%, 100% { box-shadow: 0 6px 18px rgba(255, 77, 106, 0.4); }
+  50% { box-shadow: 0 6px 30px rgba(255, 77, 106, 0.75); }
+}
+.rec-meter {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.rec-meter-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: left;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--teal), var(--amber), var(--red));
+  transition: transform 0.05s linear;
+}
+.rec-timer {
+  font-size: 14px;
+  color: var(--muted);
+  min-width: 48px;
+  text-align: right;
+}
+.rec-label-wrap {
+  text-align: center;
+}
+.rec-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--faint);
+}
+
+/* Export modal */
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.segmented {
+  display: flex;
+  gap: 6px;
+}
+.seg-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition: all 0.14s var(--ease);
+}
+.seg-btn:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.seg-btn.is-active {
+  color: var(--cyan);
+  border-color: color-mix(in srgb, var(--cyan) 55%, transparent);
+  background: rgba(0, 229, 255, 0.12);
+}
+.spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.25);
+  border-top-color: #04141a;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

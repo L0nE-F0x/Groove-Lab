@@ -19,6 +19,7 @@ const LANE_COLORS: Record<DrumSoundType, string> = {
   closedHat: '#00e5ff',
   openHat: '#1fd1a5',
   perc: '#7c5cff',
+  sample: '#a3e635', // imported / recorded one-shots stand out in lime
 };
 
 export class DrumSequencer {
@@ -101,13 +102,23 @@ export class DrumSequencer {
       class: 'lane-btn', type: 'button', title: `Randomize ${lane.name}`, html: icon('shuffle', 13),
       onClick: () => { projectStore.randomizeLane(this.trackId, lane.id); engine.previewDrum(this.trackId, lane.id); },
     });
+
+    const actions: HTMLElement[] = [vol.el, randBtn, clearBtn];
+    // Imported/recorded one-shot lanes can be removed (the synth kit can't).
+    if (lane.soundType === 'sample') {
+      actions.push(el('button', {
+        class: 'lane-btn danger', type: 'button', title: `Remove ${lane.name}`, html: icon('trash', 13),
+        onClick: () => projectStore.removeLane(this.trackId, lane.id),
+      }));
+    }
+
     return el('div', { class: 'lane-controls', style: { '--lane': color } }, [
       el('span', { class: 'lane-swatch' }),
       el('button', {
         class: 'lane-name', type: 'button', title: 'Preview',
         onClick: () => engine.previewDrum(this.trackId, lane.id),
       }, [lane.name]),
-      el('div', { class: 'lane-actions' }, [vol.el, randBtn, clearBtn]),
+      el('div', { class: 'lane-actions' }, actions),
     ]);
   }
 
@@ -171,6 +182,9 @@ export class DrumSequencer {
   private wire(): void {
     projectStore.on('drums', ({ trackId }) => {
       if (trackId === this.trackId) this.syncCells();
+    });
+    projectStore.on('lanes', ({ trackId }) => {
+      if (trackId === this.trackId) this.build(); // a lane was added/removed
     });
     projectStore.on('structure', () => this.build());
     projectStore.on('project:loaded', () => {

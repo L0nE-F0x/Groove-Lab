@@ -82,13 +82,21 @@ function wireEngine(): void {
     const t = projectStore.getTrack(trackId);
     if (t) engine.updateInstrument(t);
   });
-  projectStore.on('track:added', ({ track }) => engine.addTrack(track));
+  // A sampler's sound/root changed, or a sample lane was added/removed —
+  // rebuild just that track's audio nodes.
+  const rebuild = ({ trackId }: { trackId: string }) => {
+    const t = projectStore.getTrack(trackId);
+    if (t) void engine.rebuildTrack(t);
+  };
+  projectStore.on('track:rebuilt', rebuild);
+  projectStore.on('lanes', rebuild);
+  projectStore.on('track:added', ({ track }) => void engine.addTrack(track));
   projectStore.on('track:removed', ({ trackId }) => {
     engine.removeTrack(trackId);
     if (uiStore.selectedTrackId === trackId) selectFirstTrack();
   });
   projectStore.on('project:loaded', (p) => {
-    engine.loadProject(p);
+    void engine.loadProject(p);
     selectFirstTrack();
   });
 }

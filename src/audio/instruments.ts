@@ -9,11 +9,20 @@
  */
 import * as Tone from 'tone';
 import type { DrumSoundType, InstrumentParams } from './types';
+import { clamp } from '../utils/helpers';
 
 export interface DrumVoice {
   /** Fire the sound at a precise transport time, scaled by velocity (0..1). */
   trigger(time: number, velocity: number): void;
   /** Route this voice's output into a mixer channel (or any Tone node). */
+  connect(destination: Tone.InputNode): void;
+  dispose(): void;
+}
+
+/** Common surface for a melodic voice — a synth or a pitched sampler. */
+export interface Instrument {
+  triggerNote(note: string, duration: number, time: number, velocity: number): void;
+  setParams(params: InstrumentParams): void;
   connect(destination: Tone.InputNode): void;
   dispose(): void;
 }
@@ -115,6 +124,25 @@ function createPerc(): DrumVoice {
   };
 }
 
+/** One-shot player for an imported/recorded sample used as a drum lane. */
+export function createSampleVoice(buffer: AudioBuffer): DrumVoice {
+  const out = new Tone.Gain(0.9);
+  const player = new Tone.Player(buffer);
+  player.connect(out);
+  return {
+    trigger: (time, v) => {
+      player.volume.setValueAtTime(Tone.gainToDb(clamp(v, 0.001, 1)), time);
+      try {
+        player.start(time);
+      } catch {
+        /* very fast retrigger — ignore */
+      }
+    },
+    connect: (d) => out.connect(d),
+    dispose: () => { player.dispose(); out.dispose(); },
+  };
+}
+
 /** Factory: build the right drum voice for a lane's sound type. */
 export function createDrumVoice(type: DrumSoundType): DrumVoice {
   switch (type) {
@@ -124,6 +152,7 @@ export function createDrumVoice(type: DrumSoundType): DrumVoice {
     case 'closedHat': return createHat(false);
     case 'openHat': return createHat(true);
     case 'perc': return createPerc();
+    case 'sample': return createKick(); // placeholder; sample lanes build a sample voice directly
   }
 }
 
@@ -134,7 +163,7 @@ export function createDrumVoice(type: DrumSoundType): DrumVoice {
  * shared resonant low-pass filter. Every field of {@link InstrumentParams}
  * maps onto a control in the Sound Design panel and updates live.
  */
-export class MelodicInstrument {
+export class MelodicInstrument implements Instrument {
   readonly synth: Tone.PolySynth<Tone.Synth>;
   readonly filter: Tone.Filter;
   readonly output: Tone.Gain;
@@ -180,6 +209,55 @@ export class MelodicInstrument {
 
   dispose(): void {
     this.synth.dispose();
+    this.filter.dispose();
+    this.output.dispose();
+  }
+}
+
+/**
+ * A pitched sampler instrument: an imported/recorded sample mapped to a root
+ * note and played polyphonically across the piano roll, through the same kind
+ * of resonant filter as the synth. Attack/release come from the ADSR controls.
+ */
+export class SamplerInstrument implements Instrument {
+  readonly sampler: Tone.Sampler;
+  readonly filter: Tone.Filter;
+  readonly output: Tone.Gain;
+
+  constructor(buffer: AudioBuffer, params: InstrumentParams, rootNote = 60) {
+    this.sampler = new Tone.Sampler({
+      attack: params.attack,
+      release: Math.max(0.1, params.release),
+    });
+    // Map the sample to its root note (Tone types `add` with a literal-MIDI union).
+    this.sampler.add(rootNote as Parameters<Tone.Sampler['add']>[0], buffer);
+    this.filter = new Tone.Filter({
+      type: 'lowpass',
+      frequency: params.filterCutoff,
+      Q: params.filterQ,
+      rolloff: -24,
+    });
+    this.output = new Tone.Gain(0.95);
+    this.sampler.chain(this.filter, this.output);
+  }
+
+  setParams(p: InstrumentParams): void {
+    this.sampler.attack = p.attack;
+    this.sampler.release = Math.max(0.1, p.release);
+    this.filter.frequency.rampTo(p.filterCutoff, 0.04);
+    this.filter.Q.rampTo(p.filterQ, 0.04);
+  }
+
+  triggerNote(note: string, duration: number, time: number, velocity: number): void {
+    this.sampler.triggerAttackRelease(note, duration, time, velocity);
+  }
+
+  connect(destination: Tone.InputNode): void {
+    this.output.connect(destination);
+  }
+
+  dispose(): void {
+    this.sampler.dispose();
     this.filter.dispose();
     this.output.dispose();
   }
